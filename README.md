@@ -208,7 +208,7 @@ MIT License - See [LICENSE](LICENSE) file
 ## 👤 Author
 
 **B.E. Bioinformatics Student**  
-Satyabhama School of Engineering  
+Simats Engineering  
 December 2025
 
 ---
