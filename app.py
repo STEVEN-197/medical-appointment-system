@@ -21,6 +21,7 @@ if "auth" not in st.session_state:
     st.session_state.user = None
     st.session_state.booking = False
     st.session_state.doc_sel = None
+    st.session_state.appointments = []
 
 api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 if api_key:
@@ -47,6 +48,12 @@ docs = [
     {"id": 15, "name": "Dr. Sophie Clark", "spec": "Hematology", "exp": 10, "loc": "Phoenix"},
 ]
 
+def find_doc_by_spec(spec):
+    for d in docs:
+        if d["spec"].lower() == spec.lower():
+            return d
+    return docs[0]
+
 with st.sidebar:
     st.markdown("### 📄 MediBook")
     st.markdown('<span class="accent-pill">OOAD Capstone</span>', unsafe_allow_html=True)
@@ -66,6 +73,7 @@ with st.sidebar:
                 if e and p:
                     st.session_state.auth = True
                     st.session_state.user = e.split("@")[0]
+                    st.session_state.appointments = []
                     st.success("Logged in!")
                     st.rerun()
         else:
@@ -77,6 +85,7 @@ with st.sidebar:
                 if n and e and p:
                     st.session_state.auth = True
                     st.session_state.user = n
+                    st.session_state.appointments = []
                     st.success("Account created!")
                     st.rerun()
 
@@ -93,8 +102,11 @@ else:
         c1, c2 = st.columns(2)
         with c1:
             if st.button("✅ Confirm", use_container_width=True):
+                appt = {"doctor": doc["name"], "spec": doc["spec"], "date": str(d), "time": t, "id": len(st.session_state.appointments) + 1}
+                st.session_state.appointments.append(appt)
                 st.success(f"Booked! Dr. {doc['name']} on {d} at {t}")
                 st.session_state.booking = False
+                st.session_state.doc_sel = None
                 st.rerun()
         with c2:
             if st.button("❌ Back", use_container_width=True):
@@ -118,24 +130,53 @@ else:
                         st.rerun()
                     st.markdown('</div>', unsafe_allow_html=True)
         elif page == "Appointments":
-            st.markdown('<div class="section-title">Appointments</div>', unsafe_allow_html=True)
-            st.info("📌 No appointments yet")
+            st.markdown('<div class="section-title">My Appointments</div>', unsafe_allow_html=True)
+            if not st.session_state.appointments:
+                st.info("📌 No appointments yet")
+            else:
+                for appt in st.session_state.appointments:
+                    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+                    st.write(f"**Dr. {appt['doctor']}** - {appt['spec']}")
+                    st.write(f"📅 {appt['date']} at {appt['time']}")
+                    if st.button(f"Cancel", key=f"cancel_{appt['id']}", use_container_width=True):
+                        st.session_state.appointments.remove(appt)
+                        st.success("Appointment cancelled")
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="section-title">AI Assistant</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">AI Assistant - Book Appointment</div>', unsafe_allow_html=True)
             if not ai_ok:
                 st.error("API not configured")
             else:
-                q = st.text_area("Need help?")
-                if st.button("Ask AI", use_container_width=True):
+                q = st.text_area("Describe your appointment need (e.g., 'I need a cardiologist next week'):")
+                if st.button("Ask AI to Book", use_container_width=True):
                     if q.strip():
                         with st.spinner("Processing..."):
                             try:
                                 m = genai.GenerativeModel('gemini-2.5-flash')
-                                r = m.generate_content(f"Medical assistant. Request: {q}. Provide: 1)Speciality 2)Urgency 3)Suggestion")
-                                st.success("🤖 Recommendation")
-                                st.write(r.text)
+                                r = m.generate_content(f"""You are a medical appointment booking assistant. Parse this request and extract:
+1. Medical speciality needed
+2. Preferred date (if mentioned)
+3. Time preference
+
+Request: {q}
+
+Respond with ONLY: speciality|date|time
+Example: Cardiology|2025-12-26|10:00 AM
+
+If date is not specified, use 2025-12-26. If time is not specified, use 10:00 AM.""")
+                                parts = r.text.strip().split('|')
+                                spec = parts[0].strip() if len(parts) > 0 else "Cardiology"
+                                date_str = parts[1].strip() if len(parts) > 1 else str(datetime.now().date())
+                                time_str = parts[2].strip() if len(parts) > 2 else "10:00 AM"
+                                doc = find_doc_by_spec(spec)
+                                appt = {"doctor": doc["name"], "spec": doc["spec"], "date": date_str, "time": time_str, "id": len(st.session_state.appointments) + 1}
+                                st.session_state.appointments.append(appt)
+                                st.success(f"🤖 AI Booked! Dr. {doc['name']} ({doc['spec']}) on {date_str} at {time_str}")
                             except Exception as e:
                                 st.error(f"Error: {str(e)[:80]}")
+                    else:
+                        st.warning("Please describe your appointment need")
 
 st.divider()
 st.markdown("<div style='text-align:center;color:#999;font-size:11px;'>MediBook © 2024 | Streamlit + Gemini</div>", unsafe_allow_html=True)
